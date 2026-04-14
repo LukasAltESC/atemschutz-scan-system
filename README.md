@@ -8,7 +8,7 @@ Das Projekt unterstützt zwei Arbeitsmodi:
 
 ## Dokumentation
 
-Die Dokumentation ist jetzt in einzelne, klar getrennte Dateien aufgeteilt:
+Die Dokumentation dieses ist in folgende Dateien aufgeteilt:
 
 - [`docs/PROJEKTBESCHREIBUNG.md`](docs/PROJEKTBESCHREIBUNG.md)
 - [`docs/BENUTZUNGSANLEITUNG.md`](docs/BENUTZUNGSANLEITUNG.md)
