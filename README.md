@@ -45,5 +45,4 @@ Danach ist das Webinterface typischerweise unter `http://<PI-IP>:5000` erreichba
 ## Hinweise
 
 - Die Hardware- und Sicherheitsparameter werden direkt in `config.py` gepflegt.
-- Eine `config_local.py` wird nicht verwendet.
 - Laufzeitdateien wie SQLite-Datenbank, Exporte und Web-Einstellungen werden bewusst nicht versioniert.
