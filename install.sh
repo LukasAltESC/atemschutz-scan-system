@@ -25,6 +25,7 @@ AP_DHCP_END="${AP_DHCP_END:-192.168.50.150}"
 AP_DHCP_LEASE_TIME="${AP_DHCP_LEASE_TIME:-24h}"
 AP_CONNECTION_NAME="${AP_CONNECTION_NAME:-atemschutz-access-point}"
 AP_LOCAL_HOSTNAME="${AP_LOCAL_HOSTNAME:-atemschutz-scan-system.local}"
+AP_BACKEND="${AP_BACKEND:-classic}"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "Bitte mit sudo ausfuehren: sudo ./install.sh"
@@ -79,86 +80,82 @@ get_interface_ip() {
   ip -4 -o addr show dev "${interface_name}" 2>/dev/null | awk '{print $4}' | cut -d'/' -f1 | head -n1
 }
 
-configure_access_point_with_networkmanager() {
-  echo "== Richte WLAN-Access-Point ueber NetworkManager ein =="
-  systemctl enable NetworkManager
-  systemctl start NetworkManager
-  rfkill unblock wlan || true
+configure_wifi_country() {
+  echo "== Setze WLAN-Land auf ${AP_COUNTRY} =="
+  if command -v raspi-config >/dev/null 2>&1; then
+    raspi-config nonint do_wifi_country "${AP_COUNTRY}" || true
+  fi
 
-  nmcli radio wifi on || true
-  nmcli device set "${AP_INTERFACE}" managed yes || true
+  mkdir -p /etc/wpa_supplicant
+  python3 - "${AP_COUNTRY}" <<'PY'
+from pathlib import Path
+import sys
 
-  if nmcli -t -f NAME connection show | grep -Fxq "${AP_CONNECTION_NAME}"; then
+country = sys.argv[1]
+path = Path('/etc/wpa_supplicant/wpa_supplicant.conf')
+base_lines = [
+    f'country={country}',
+    'ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev',
+    'update_config=1',
+]
+if path.exists():
+    lines = path.read_text(encoding='utf-8', errors='ignore').splitlines()
+    filtered = [line for line in lines if not line.startswith('country=')]
+    if not any(line.startswith('ctrl_interface=') for line in filtered):
+        filtered.insert(0, 'ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev')
+    if not any(line.startswith('update_config=') for line in filtered):
+        filtered.insert(1, 'update_config=1')
+    filtered.insert(0, f'country={country}')
+    path.write_text('\n'.join(filtered).rstrip() + '\n', encoding='utf-8')
+else:
+    path.write_text('\n'.join(base_lines) + '\n', encoding='utf-8')
+PY
+
+  if command -v iw >/dev/null 2>&1; then
+    iw reg set "${AP_COUNTRY}" || true
+  fi
+}
+
+disable_wlan_client_conflicts() {
+  echo "== Deaktiviere stoerende WLAN-Client-Dienste auf ${AP_INTERFACE} =="
+
+  systemctl stop wpa_supplicant.service || true
+  systemctl stop "wpa_supplicant@${AP_INTERFACE}.service" || true
+  systemctl disable wpa_supplicant.service || true
+  systemctl disable "wpa_supplicant@${AP_INTERFACE}.service" || true
+
+  if command -v nmcli >/dev/null 2>&1; then
+    nmcli connection down "${AP_CONNECTION_NAME}" || true
     nmcli connection delete "${AP_CONNECTION_NAME}" || true
+    nmcli device set "${AP_INTERFACE}" managed no || true
   fi
-
-  nmcli connection add \
-    type wifi \
-    ifname "${AP_INTERFACE}" \
-    con-name "${AP_CONNECTION_NAME}" \
-    autoconnect yes \
-    ssid "${AP_SSID}"
-
-  nmcli connection modify "${AP_CONNECTION_NAME}" \
-    802-11-wireless.mode ap \
-    802-11-wireless.band bg \
-    802-11-wireless.channel "${AP_CHANNEL}" \
-    802-11-wireless.cloned-mac-address permanent \
-    connection.autoconnect yes \
-    connection.autoconnect-priority 100 \
-    ipv4.method shared \
-    ipv4.addresses "${AP_IP_ADDRESS}/${AP_PREFIX_LENGTH}" \
-    ipv6.method ignore
-
-  if [[ "${AP_OPEN_NETWORK}" == "1" ]]; then
-    nmcli connection modify "${AP_CONNECTION_NAME}" wifi-sec.key-mgmt ""
-  else
-    nmcli connection modify "${AP_CONNECTION_NAME}" \
-      wifi-sec.key-mgmt wpa-psk \
-      wifi-sec.psk "${AP_PASSPHRASE}"
-  fi
-
-  if ip link show "${ETH_INTERFACE}" >/dev/null 2>&1; then
-    local eth_connection_name="${PROJECT_NAME}-ethernet"
-    if ! nmcli -t -f NAME,DEVICE connection show | grep -Fq "${eth_connection_name}:${ETH_INTERFACE}"; then
-      nmcli connection add \
-        type ethernet \
-        ifname "${ETH_INTERFACE}" \
-        con-name "${eth_connection_name}" \
-        ipv4.method auto \
-        ipv6.method ignore \
-        connection.autoconnect yes || true
-    else
-      nmcli connection modify "${eth_connection_name}" \
-        ipv4.method auto \
-        ipv6.method ignore \
-        connection.autoconnect yes || true
-    fi
-    nmcli connection up "${eth_connection_name}" || true
-  fi
-
-  nmcli connection up "${AP_CONNECTION_NAME}"
 }
 
 configure_access_point_with_classic_stack() {
   echo "== Richte WLAN-Access-Point ueber hostapd/dnsmasq ein =="
-  apt install -y hostapd dnsmasq rfkill dhcpcd5
+  apt install -y hostapd dnsmasq rfkill dhcpcd5 iw
   systemctl unmask hostapd || true
   systemctl enable dhcpcd
   systemctl start dhcpcd
   rfkill unblock wlan || true
 
+  configure_wifi_country
+  disable_wlan_client_conflicts
+
   cat > /etc/hostapd/hostapd.conf <<HOSTAPD
 country_code=${AP_COUNTRY}
 interface=${AP_INTERFACE}
+driver=nl80211
+ctrl_interface=/var/run/hostapd
+ctrl_interface_group=0
 ssid=${AP_SSID}
 hw_mode=g
 channel=${AP_CHANNEL}
 macaddr_acl=0
 auth_algs=1
 ignore_broadcast_ssid=0
-wmm_enabled=1
-ieee80211n=1
+ieee80211d=1
+ieee80211n=0
 HOSTAPD
 
   if [[ "${AP_OPEN_NETWORK}" == "1" ]]; then
@@ -170,6 +167,7 @@ HOSTAPD
 wpa=2
 wpa_passphrase=${AP_PASSPHRASE}
 wpa_key_mgmt=WPA-PSK
+wpa_pairwise=TKIP
 rsn_pairwise=CCMP
 HOSTAPD
   fi
@@ -204,15 +202,34 @@ nohook wpa_supplicant
 ${end_marker}
 DHCP
 
+  if ip link show "${ETH_INTERFACE}" >/dev/null 2>&1; then
+    local eth_start_marker="# >>> ${PROJECT_NAME} ethernet >>>"
+    local eth_end_marker="# <<< ${PROJECT_NAME} ethernet <<<"
+    remove_block_from_file /etc/dhcpcd.conf "${eth_start_marker}" "${eth_end_marker}"
+    cat >> /etc/dhcpcd.conf <<DHCP
+
+${eth_start_marker}
+interface ${ETH_INTERFACE}
+require dhcp_server_identifier
+${eth_end_marker}
+DHCP
+  fi
+
   systemctl restart dhcpcd
   systemctl enable dnsmasq hostapd
   systemctl restart dnsmasq
   systemctl restart hostapd
 }
 
+configure_access_point_with_networkmanager() {
+  echo "== NetworkManager-Backend explizit angefordert =="
+  echo "== Auf Raspberry Pi OS Lite ist der klassische hostapd/dnsmasq-Backend empfohlen =="
+  configure_access_point_with_classic_stack
+}
+
 echo "== Installiere Pakete =="
 apt update
-apt install -y python3-flask python3-evdev python3-rpi.gpio python3-usb sqlite3 rsync usbutils
+apt install -y python3-flask python3-evdev python3-rpi.gpio python3-usb sqlite3 rsync usbutils iw
 
 echo "== Synchronisiere Projekt nach ${INSTALL_DIR} =="
 mkdir -p "${INSTALL_DIR}"
@@ -257,7 +274,7 @@ RULE
 udevadm control --reload-rules
 udevadm trigger || true
 
-if command -v nmcli >/dev/null 2>&1 && systemctl list-unit-files NetworkManager.service >/dev/null 2>&1; then
+if [[ "${AP_BACKEND}" == "networkmanager" ]]; then
   configure_access_point_with_networkmanager
 else
   configure_access_point_with_classic_stack
@@ -293,4 +310,7 @@ echo "Bondruck-Layout: ${INSTALL_DIR}/data/print_layout.json"
 echo "Scanner-Test: python3 ${INSTALL_DIR}/tools/list_input_devices.py"
 echo "GPIO-Test: python3 ${INSTALL_DIR}/tools/test_gpio_io.py"
 echo "Drucker-Probe: sudo python3 ${INSTALL_DIR}/tools/test_thermal_printer.py --probe"
+echo "Hotspot-Diagnose: sudo systemctl status hostapd dnsmasq --no-pager"
+echo "Hotspot-Logs: sudo journalctl -u hostapd -u dnsmasq -n 100 --no-pager"
+echo "Wichtig: Wenn ein Geraet das WLAN bereits gespeichert hat, Netzwerk auf dem Geraet einmal loeschen/vergessen und neu verbinden."
 echo "Wichtig: Einmal neu einloggen oder rebooten, damit die Gruppenrechte fuer ${RUN_USER} aktiv werden."

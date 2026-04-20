@@ -164,6 +164,8 @@ Falls der Standard angepasst werden soll, koennen beim Installieren Umgebungsvar
 sudo AP_SSID="Atemschutz-Scan-System" AP_PASSPHRASE="MeinSicheresPasswort" AP_IP_ADDRESS="192.168.60.1" ./install.sh
 ```
 
+Wenn ein Handy oder Tablet den Hotspot bereits mit einer aelteren Konfiguration gespeichert hat, das Netzwerk auf dem Geraet einmal **vergessen/loeschen** und danach neu verbinden. Andernfalls melden manche Geraete trotz korrektem Passwort faelschlich „Passwort falsch“.
+
 ## Wartung und Service
 
 ### Dienstbefehle
