@@ -27,6 +27,21 @@ sudo ./install.sh
 
 Danach ist das Webinterface typischerweise unter `http://<PI-IP>:5000` erreichbar.
 
+Die `install.sh` richtet zusaetzlich einen WLAN-Access-Point mit folgenden Standardwerten ein:
+
+- **SSID:** `Atemschutz-Scan-System`
+- **Passwort:** `Atemschutz2026`
+- **Statische AP-IP:** `192.168.50.1`
+- **Webinterface ueber AP:** `http://192.168.50.1:5000`
+
+Der LAN-Port bleibt parallel aktiv und bezieht weiterhin eine Adresse per DHCP. Damit sind SSH und Webinterface sowohl ueber den Access Point als auch ueber Ethernet erreichbar.
+
+Die AP-Werte koennen beim Installieren per Umgebungsvariable angepasst werden, zum Beispiel:
+
+```bash
+sudo AP_SSID="Atemschutz-Scan-System" AP_PASSPHRASE="MeinSicheresPasswort" AP_IP_ADDRESS="192.168.60.1" ./install.sh
+```
+
 ## Projektstruktur
 
 - `app.py` – Flask-Webanwendung und Routen

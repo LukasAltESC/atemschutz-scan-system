@@ -145,14 +145,23 @@ journalctl -u atemschutz-scan-system.service -n 100 -f
 
 ### 11. Weboberfläche öffnen
 
-```text
-http://atemschutzsystem.local:5000
-```
+Nach der Installation stehen standardmaessig zwei Netzwege zur Verfuegung:
 
-oder
+1. **WLAN-Access-Point**
+   - SSID: `Atemschutz-Scan-System`
+   - Passwort: `Atemschutz2026`
+   - Webinterface: `http://192.168.50.1:5000`
+   - SSH: `ssh agw@192.168.50.1`
 
-```text
-http://<PI-IP>:5000
+2. **LAN / Ethernet**
+   - DHCP bleibt aktiv
+   - Webinterface: `http://<LAN-IP>:5000`
+   - SSH: `ssh agw@<LAN-IP>`
+
+Falls der Standard angepasst werden soll, koennen beim Installieren Umgebungsvariablen gesetzt werden, zum Beispiel:
+
+```bash
+sudo AP_SSID="Atemschutz-Scan-System" AP_PASSPHRASE="MeinSicheresPasswort" AP_IP_ADDRESS="192.168.60.1" ./install.sh
 ```
 
 ## Wartung und Service

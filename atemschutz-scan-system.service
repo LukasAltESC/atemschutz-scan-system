@@ -1,6 +1,7 @@
 [Unit]
 Description=Atemschutz-Scan-System
-After=network.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 User=__RUN_USER__
